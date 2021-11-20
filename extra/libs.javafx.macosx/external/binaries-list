@@ -1,0 +1,23 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+61D52392B063BE78F7CC1B0FBFC04DDA7A835A15 org.openjfx:javafx-base:17:mac
+E73ACF695FFCCB4F904FF7B76DE8999EEFB547C2 org.openjfx:javafx-controls:17:mac
+8B1D1124CE83E874DB390016913FBA7708F3592D org.openjfx:javafx-graphics:17:mac
+EF463CAF627C4C97B8E5C6A5AE16050C56AED966 org.openjfx:javafx-media:17:mac
+BF188C003E54FFB4CFF6A9BE7CE437FA269964FE org.openjfx:javafx-web:17:mac
+9DB4AF0939F1A1F82D727D3F6D133BA4096C5AAD org.openjfx:javafx-swing:17:mac

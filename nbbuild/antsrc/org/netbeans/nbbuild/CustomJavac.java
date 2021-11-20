@@ -66,6 +66,13 @@ public class CustomJavac extends Javac {
 
     @Override
     public void execute() throws BuildException {
+        String tgr = getTarget();
+        if (tgr.matches("\\d+")) {
+            tgr = "1." + tgr;
+        }
+        if (!isBootclasspathOptionUsed()) {
+            setRelease(tgr.substring(2));
+        }
         String src = getSource();
         if (src.matches("\\d+")) {
             src = "1." + src;
@@ -102,6 +109,15 @@ public class CustomJavac extends Javac {
         super.compile();
     }
 
+    private boolean isBootclasspathOptionUsed() {
+        for (String arg : getCurrentCompilerArgs()) {
+            if (arg.contains("-Xbootclasspath")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * See issue #166888. If there are any existing class files with no matching
      * source file, assume this is an incremental build and the source file has
@@ -115,7 +131,7 @@ public class CustomJavac extends Javac {
         if (!d.isDirectory()) {
             return;
         }
-        List<File> sources = new ArrayList<File>();
+        List<File> sources = new ArrayList<>();
         for (String s : getSrcdir().list()) {
             sources.add(new File(s));
         }

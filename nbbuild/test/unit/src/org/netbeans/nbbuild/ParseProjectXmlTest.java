@@ -111,9 +111,9 @@ public class ParseProjectXmlTest extends TestBase {
 
         fakeproj.setProperty("cluster.path.final", filePath(nball, "nbbuild/netbeans/platform")
                 + File.pathSeparator + getWorkDir());
-        final String prj = filePath(nball, "apisupport.ant/test/unit/data/example-external-projects/suite1/action-project");
+        final String prj = filePath(nball, "apisupport/apisupport.ant/test/unit/data/example-external-projects/suite1/action-project");
         fakeproj.setProperty("basedir",prj);
-        fakeproj.setProperty("suite.dir", filePath(nball, "apisupport.ant/test/unit/data/example-external-projects/suite1"));
+        fakeproj.setProperty("suite.dir", filePath(nball, "apisupport/apisupport.ant/test/unit/data/example-external-projects/suite1"));
         long start = System.currentTimeMillis();
 
         ParseProjectXml p = new ParseProjectXml();
@@ -151,21 +151,20 @@ public class ParseProjectXmlTest extends TestBase {
 
     private File extractFile(String content, String fileName) throws IOException {
         File f = new File(getWorkDir(),fileName);
-        FileOutputStream fos = new FileOutputStream(f);
-        fos.write(content.getBytes("UTF-8"));
-        fos.close();
+        try (FileOutputStream fos = new FileOutputStream(f)) {
+            fos.write(content.getBytes("UTF-8"));
+        }
         return f;
     }
 
     private File generateJar (File f, String[] content, Manifest manifest) throws IOException {
-        JarOutputStream os = new JarOutputStream (new FileOutputStream (f), manifest);
-
-        for (int i = 0; i < content.length; i++) {
-            os.putNextEntry(new JarEntry (content[i]));
-            os.closeEntry();
+        try (JarOutputStream os = new JarOutputStream (new FileOutputStream (f), manifest)) {
+            for (int i = 0; i < content.length; i++) {
+                os.putNextEntry(new JarEntry (content[i]));
+                os.closeEntry();
+            }
+            os.closeEntry ();
         }
-        os.closeEntry ();
-        os.close();
 
         return f;
     }

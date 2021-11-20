@@ -78,26 +78,6 @@ public final class ModuleSelector extends BaseExtendSelector {
         }
         
         String module = null;
-        if (file.getName().endsWith(".jar")) {
-            try {
-                JarFile jar = new JarFile(file);
-                Manifest m = jar.getManifest();
-                if (m != null) {
-                    module = m.getMainAttributes().getValue("OpenIDE-Module"); // NOI18N
-                    if (module == null && !isExt(file)) {
-                        module = m.getMainAttributes().getValue("Bundle-SymbolicName"); // NOI18N
-                        int semicolon = module == null ? -1 : module.indexOf(';');
-                        if (semicolon >= 0) {
-                            module = module.substring(0, semicolon);
-                        }
-                    }
-                }
-                jar.close();
-            } catch (IOException ex) {
-                throw new BuildException("Problem with " + file + ": " + ex, ex, getLocation());
-            }
-        }
-
         String name = file.getName();
         File p = file.getParentFile();
         for(;;) {
@@ -125,6 +105,24 @@ public final class ModuleSelector extends BaseExtendSelector {
             }
             name = p.getName() + '/' + name;
             p = p.getParentFile();
+        }
+
+        if (module == null && name.endsWith(".jar")) {
+            try (JarFile jar = new JarFile(file)) {
+                Manifest m = jar.getManifest();
+                if (m != null) {
+                    module = m.getMainAttributes().getValue("OpenIDE-Module"); // NOI18N
+                    if (module == null && !isExt(file)) {
+                        module = m.getMainAttributes().getValue("Bundle-SymbolicName"); // NOI18N
+                        int semicolon = module == null ? -1 : module.indexOf(';');
+                        if (semicolon >= 0) {
+                            module = module.substring(0, semicolon);
+                        }
+                    }
+                }
+            } catch (IOException ex) {
+                throw new BuildException("Problem with " + file + ": " + ex, ex, getLocation());
+            }
         }
         
         if (module == null) {
@@ -164,9 +162,9 @@ public final class ModuleSelector extends BaseExtendSelector {
             return;
         }
         
-        includeClusters = new HashSet<String>();
-        excludeClusters = new HashSet<String>();
-        excludeModules = new HashSet<String>();
+        includeClusters = new HashSet<>();
+        excludeClusters = new HashSet<>();
+        excludeModules = new HashSet<>();
         
         Parameter[] arr = getParameters();
         if (arr == null) {
@@ -195,14 +193,10 @@ public final class ModuleSelector extends BaseExtendSelector {
                 continue;
             }
             if ("updateTrackingFiles".equals(p.getName())) {
-                fileToOwningModule = new HashMap<String,String>();
+                fileToOwningModule = new HashMap<>();
                 try {
                     readUpdateTracking(getProject(), p.getValue(), fileToOwningModule);
-                } catch (IOException ex) {
-                    throw new BuildException(ex);
-                } catch (ParserConfigurationException ex) {
-                    throw new BuildException(ex);
-                } catch (SAXException ex) {
+                } catch (IOException | ParserConfigurationException | SAXException ex) {
                     throw new BuildException(ex);
                 }
                 log("Will accept these files: " + fileToOwningModule.keySet(), Project.MSG_VERBOSE);

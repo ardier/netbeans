@@ -81,7 +81,8 @@ class AutoUpdateCatalogParser extends DefaultHandler {
     
     private static enum ELEMENTS {
         module_updates, module_group, notification, module, description,
-        module_notification, external_package, manifest, l10n, license, UNKNOWN;
+        module_notification, external_package, manifest, l10n, license,
+        message_digest, UNKNOWN;
 
         private static ELEMENTS valueOfOrUnknown(String qName) {
             try {
@@ -130,8 +131,11 @@ class AutoUpdateCatalogParser extends DefaultHandler {
     private static Map<String, ModuleItem> cache;
     private static URI cacheURI;
     synchronized static Map<String, ModuleItem> getUpdateItems (URL url, URL provider, Task task) throws IOException {
+        return getUpdateItems(url, null, provider, task);
+    }
+    synchronized static Map<String, ModuleItem> getUpdateItems (URL url, InputStream data, URL provider, Task task) throws IOException {
 
-        Map<String, ModuleItem> items = new HashMap<String, ModuleItem> ();
+        Map<String, ModuleItem> items = new HashMap<> ();
         URI base;
         try {
             if (provider != null) {
@@ -149,7 +153,7 @@ class AutoUpdateCatalogParser extends DefaultHandler {
                 SAXParserFactory factory = SAXParserFactory.newInstance();
                 factory.setValidating(false);
                 SAXParser saxParser = factory.newSAXParser();
-                is = getInputSource(url, provider, base);
+                is = getInputSource(url, data, provider, base);
                 saxParser.parse(is, new AutoUpdateCatalogParser(items, provider, base));
                 cacheURI = base;
                 cache = items;
@@ -182,8 +186,10 @@ class AutoUpdateCatalogParser extends DefaultHandler {
         return res;
     }
     
-    private static InputSource getInputSource(URL toParse, URL p, URI base) throws IOException {
-        InputStream is = toParse.openStream ();
+    private static InputSource getInputSource(URL toParse, InputStream is, URL p, URI base) throws IOException {
+        if (is == null) {
+            is = toParse.openStream();
+        }
         if (isGzip (p)) {
             try {
                 is = new GZIPInputStream(is);
@@ -204,12 +210,12 @@ class AutoUpdateCatalogParser extends DefaultHandler {
         return src;
     }
     
-    private Stack<String> currentGroup = new Stack<String> ();
+    private Stack<String> currentGroup = new Stack<> ();
     private String catalogDate;
-    private Stack<ModuleDescriptor> currentModule = new Stack<ModuleDescriptor> ();
-    private Stack<Map <String,String>> currentLicense = new Stack<Map <String,String>> ();
-    private Stack<String> currentNotificationUrl = new Stack<String> ();
-    private List<String> lines = new ArrayList<String> ();
+    private Stack<ModuleDescriptor> currentModule = new Stack<> ();
+    private Stack<Map <String,String>> currentLicense = new Stack<> ();
+    private Stack<String> currentNotificationUrl = new Stack<> ();
+    private List<String> lines = new ArrayList<> ();
     private int bufferInitSize = 0;
 
     @Override
@@ -234,6 +240,8 @@ class AutoUpdateCatalogParser extends DefaultHandler {
             case l10n :
                 break;
             case manifest :
+                break;
+            case message_digest:
                 break;
             case description :
                 ERR.info ("Not supported yet.");
@@ -343,6 +351,8 @@ class AutoUpdateCatalogParser extends DefaultHandler {
                 items.put (desc.getId (), m);
                 
                 break;
+            case message_digest:
+                break;
             case description :
                 ERR.info ("Not supported yet.");
                 break;
@@ -355,7 +365,7 @@ class AutoUpdateCatalogParser extends DefaultHandler {
                 ERR.info ("Not supported yet.");
                 break;
             case license :
-                Map <String, String> map = new HashMap<String,String> ();
+                Map <String, String> map = new HashMap<> ();
                 map.put(attributes.getValue (LICENSE_ATTR_NAME), attributes.getValue (LICENSE_ATTR_URL));
                 currentLicense.push (map);
                 break;
@@ -508,9 +518,7 @@ class AutoUpdateCatalogParser extends DefaultHandler {
                     }
                 }
                 retval = distributionURI.toURL ();
-            } catch (MalformedURLException ex) {
-                ERR.log (Level.INFO, null, ex);
-            } catch (URISyntaxException ex) {
+            } catch (MalformedURLException | URISyntaxException ex) {
                 ERR.log (Level.INFO, null, ex);
             }
         }

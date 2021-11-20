@@ -27,7 +27,7 @@ import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.types.FileSet;
 import org.netbeans.junit.NbTestCase;
-import org.netbeans.nbbuild.extlibs.DownloadBinaries.MavenCoordinate;
+import org.netbeans.nbbuild.extlibs.MavenCoordinate;
 
 public class DownloadBinariesTest extends NbTestCase {
 
@@ -41,9 +41,9 @@ public class DownloadBinariesTest extends NbTestCase {
     private File list;
 
     private static void write(File f, String contents) throws IOException {
-        OutputStream os = new FileOutputStream(f);
-        os.write(contents.getBytes("UTF-8"));
-        os.close();
+        try (OutputStream os = new FileOutputStream(f)) {
+            os.write(contents.getBytes("UTF-8"));
+        }
     }
 
     @Override

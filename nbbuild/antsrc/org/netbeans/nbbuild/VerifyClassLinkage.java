@@ -26,6 +26,7 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -137,13 +138,10 @@ public class VerifyClassLinkage extends Task {
         }
         try {
             // Map from class name (foo/Bar format) to true (found), false (not found), null (as yet unknown):
-            Map<String,Boolean> loadable = new HashMap<String,Boolean>();
-            Map<String,byte[]> classfiles = new TreeMap<String,byte[]>();
-            JarFile jf = new JarFile(jar);
-            try {
-                read(jf, classfiles, new HashSet<File>(Collections.singleton(jar)), this, ignores);
-            } finally {
-                jf.close();
+            Map<String,Boolean> loadable = new HashMap<>();
+            Map<String,byte[]> classfiles = new TreeMap<>();
+            try (JarFile jf = new JarFile(jar)) {
+                read(jf, classfiles, new HashSet<>(Collections.singleton(jar)), this, ignores);
             }
             for (String clazz: classfiles.keySet()) {
                 // All classes we define are obviously loadable:
@@ -185,15 +183,12 @@ public class VerifyClassLinkage extends Task {
                     continue;
                 }
                 ByteArrayOutputStream baos = new ByteArrayOutputStream(Math.max((int) entry.getSize(), 0));
-                InputStream is = jf.getInputStream(entry);
-                try {
+                try (InputStream is = jf.getInputStream(entry)) {
                     byte[] buf = new byte[4096];
                     int read;
                     while ((read = is.read(buf)) != -1) {
                         baos.write(buf, 0, read);
                     }
-                } finally {
-                    is.close();
                 }
                 classfiles.put(clazz, baos.toByteArray());
             }
@@ -203,7 +198,7 @@ public class VerifyClassLinkage extends Task {
                 if (cp != null) {
                     String[] uris = cp.trim().split("[, ]+");
                     for (int i = 0; i < uris.length; i++) {
-                        String path = uris[i];
+                        String path = URLDecoder.decode(uris[i], "UTF-8");
                         File otherJar = null;
                         if (path.equals("${java.home}/lib/ext/jfxrt.jar")) { 
                             String jhm = System.getProperty("java.home");
@@ -225,11 +220,8 @@ public class VerifyClassLinkage extends Task {
                         }
                         if (alreadyRead.add(otherJar)) {
                             if (otherJar.isFile()) {
-                                JarFile otherJF = new JarFile(otherJar);
-                                try {
+                                try (JarFile otherJF = new JarFile(otherJar)) {
                                     read(otherJF, classfiles, alreadyRead, task, ignores);
-                                } finally {
-                                    otherJF.close();
                                 }
                             }
                         } else {
@@ -274,7 +266,7 @@ public class VerifyClassLinkage extends Task {
         }
     }
     static Set<String> dependencies(byte[] data) throws IOException {
-        Set<String> result = new TreeSet<String>();
+        Set<String> result = new TreeSet<>();
         DataInput input = new DataInputStream(new ByteArrayInputStream(data));
         skip(input, 8); // magic, minor_version, major_version
         int size = input.readUnsignedShort() - 1; // constantPoolCount

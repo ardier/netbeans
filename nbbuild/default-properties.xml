@@ -66,11 +66,17 @@
 
   <property name="test.dist.dir" location="${nb.build.dir}/testdist"/>
   
-  <property name="binaries.cache" location="${user.home}/.hgexternalcache"/>
-  <property name="binaries.server" value="http://hg.netbeans.org/binaries/"/>
+  <import file="binaries-default-properties.xml"/>
 
   <target name="-load-build-properties">
     <property file="${nb_all}/nbbuild/build.properties"/>
   </target>
 
+  <xmlcatalog id="nbantextcatalog" classpath="${nbantext.jar}">
+    <dtd publicId="-//W3C//DTD XHTML 1.0 Strict//EN" location="org/netbeans/nbbuild/xhtml1-strict.dtd" />
+    <dtd publicId="-//W3C//ENTITIES Latin 1 for XHTML//EN" location="org/netbeans/nbbuild/xhtml-lat1.ent" />
+    <dtd publicId="-//W3C//ENTITIES Symbols for XHTML//EN" location="org/netbeans/nbbuild/xhtml-symbol.ent" />
+    <dtd publicId="-//W3C//ENTITIES Special for XHTML//EN" location="org/netbeans/nbbuild/xhtml-special.ent" />
+    <dtd publicId="-//NetBeans//DTD Arch Answers//EN" location="org/netbeans/nbbuild/Arch.dtd" />
+  </xmlcatalog>
 </project>

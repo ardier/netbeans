@@ -32,6 +32,8 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -96,12 +98,12 @@ final class ModuleListParser {
         Map<String,Entry> entries = SOURCE_SCAN_CACHE.get(root);
         if (entries == null) {
             // Similar to #62221: if just invoked from a module in standard clusters, only scan those clusters (faster):
-            Set<String> standardModules = new HashSet<String>();
+            Set<String> standardModules = new HashSet<>();
             boolean doFastScan = false;
             String basedir = (String) properties.get("basedir");
+            String clusterList = (String) properties.get("nb.clusters.list");
             if (basedir != null) {
                 File basedirF = new File(basedir);
-                String clusterList = (String) properties.get("nb.clusters.list");
                 if (clusterList == null) {
                     String config = (String) properties.get("cluster.config");
                     if (config != null) {
@@ -126,7 +128,7 @@ final class ModuleListParser {
                             while (tok2.hasMoreTokens()) {
                                 String module = tok2.nextToken();
                                 standardModules.add(module);
-                                doFastScan |= new File(root, module.replace('/', File.separatorChar)).equals(basedirF);
+                                // doFastScan |= new File(root, module.replace('/', File.separatorChar)).equals(basedirF);
                             }
                         }
                     }
@@ -140,8 +142,7 @@ final class ModuleListParser {
                     project.log("Loading module list from " + scanCache);
                 }
                 try {
-                    InputStream is = new FileInputStream(scanCache);
-                    try {
+                    try (InputStream is = new FileInputStream(scanCache)) {
                         ObjectInput oi = new ObjectInputStream(new BufferedInputStream(is));
                         @SuppressWarnings("unchecked") Map<File,Long[]> timestampsAndSizes = (Map) oi.readObject();
                         boolean matches = true;
@@ -158,9 +159,9 @@ final class ModuleListParser {
                         if (doFastScan) {
                             @SuppressWarnings("unchecked") Set<String> storedStandardModules = (Set) oi.readObject();
                             if (!standardModules.equals(storedStandardModules)) {
-                                Set<String> added = new TreeSet<String>(standardModules);
+                                Set<String> added = new TreeSet<>(standardModules);
                                 added.removeAll(storedStandardModules);
-                                Set<String> removed = new TreeSet<String>(storedStandardModules);
+                                Set<String> removed = new TreeSet<>(storedStandardModules);
                                 removed.removeAll(standardModules);
                                 project.log("Cache ignored due to changes in modules among standard clusters: + " + added + " - " + removed);
                                 matches = false;
@@ -178,8 +179,6 @@ final class ModuleListParser {
                                 project.log("Loaded modules: " + entries.keySet(), Project.MSG_DEBUG);
                             }
                         }
-                    } finally {
-                        is.close();
                     }
                 } catch (Exception x) {
                     if (project != null) {
@@ -188,11 +187,14 @@ final class ModuleListParser {
                 }
             }
             if (entries == null) {
-                entries = new HashMap<String,Entry>();
-                Map<File,Long[]> timestampsAndSizes = new HashMap<File,Long[]>();
+                entries = new HashMap<>();
+                Map<File,Long[]> timestampsAndSizes = new HashMap<>();
                 registerTimestampAndSize(new File(root, "nbbuild" + File.separatorChar + "cluster.properties"), timestampsAndSizes);
                 registerTimestampAndSize(new File(root, "nbbuild" + File.separatorChar + "build.properties"), timestampsAndSizes);
                 registerTimestampAndSize(new File(root, "nbbuild" + File.separatorChar + "user.build.properties"), timestampsAndSizes);
+
+                doFastScan = false;
+
                 if (doFastScan) {
                     if (project != null) {
                         project.log("Scanning for modules in " + root + " among standard clusters");
@@ -206,7 +208,22 @@ final class ModuleListParser {
                         project.log("Scanning for modules in " + root);
                         project.log("Quick scan mode disabled since " + basedir + " not among standard modules of " + root + " which are " + standardModules, Project.MSG_VERBOSE);
                     }
-                    for (String tree : FOREST) {
+                    List<String> subDirs = new ArrayList<>();
+                    subDirs.addAll(Arrays.asList(FOREST));
+                    String allClusters = (String) properties.get("clusters.config.full.list");
+                    if(allClusters == null) {
+                        allClusters = "";
+                    }
+                    StringTokenizer tok = new StringTokenizer(allClusters, ", ");
+                    while (tok.hasMoreTokens()) {
+                        String clusterName = tok.nextToken();
+                        String clusterDir = (String) properties.get(clusterName + ".dir");
+                        if (subDirs.contains(clusterDir)) {
+                            continue;
+                        }
+                        subDirs.add(clusterDir);
+                    }
+                    for (String tree : subDirs) {
                         File dir = tree == null ? root : new File(root, tree);
                         File[] kids = dir.listFiles();
                         if (kids == null) {
@@ -228,8 +245,7 @@ final class ModuleListParser {
                     project.log("Cache depends on files: " + timestampsAndSizes.keySet(), Project.MSG_DEBUG);
                 }
                 scanCache.getParentFile().mkdirs();
-                OutputStream os = new FileOutputStream(scanCache);
-                try {
+                try (OutputStream os = new FileOutputStream(scanCache)) {
                     ObjectOutput oo = new ObjectOutputStream(os);
                     oo.writeObject(timestampsAndSizes);
                     if (doFastScan) {
@@ -237,8 +253,6 @@ final class ModuleListParser {
                     }
                     oo.writeObject(entries);
                     oo.flush();
-                } finally {
-                    os.close();
                 }
             }
             SOURCE_SCAN_CACHE.put(root, entries);
@@ -296,9 +310,8 @@ final class ModuleListParser {
         Project fakeproj = new Project();
         if (project != null) {
             // Try to debug any problems in the following definitions (cf. #59849).
-            Iterator it = project.getBuildListeners().iterator();
-            while (it.hasNext()) {
-                fakeproj.addBuildListener((BuildListener) it.next());
+            for(BuildListener bl: project.getBuildListeners()) {
+                fakeproj.addBuildListener(bl);
             }
         }
         fakeproj.setBaseDir(dir); // in case ${basedir} is used somewhere
@@ -346,35 +359,24 @@ final class ModuleListParser {
         faketask.setName("module.jar");
         faketask.setValue(fakeproj.replaceProperties("${module.jar.dir}/${module.jar.basename}"));
         faketask.execute();
+        String id = null;
         switch (moduleType) {
         case NB_ORG:
             assert path != null;
             // Find the associated cluster.
             // first try direct mapping in nbbuild/netbeans/moduleCluster.properties
-            String clusterDir = (String) properties.get(path + ".dir");
-            if (clusterDir != null) {
-                clusterDir = clusterDir.substring(clusterDir.lastIndexOf('/') + 1);
-            } else {
-                // not found, try indirect nbbuild/cluster.properties
-                for (Map.Entry<String,Object> entry : properties.entrySet()) {
-                    String val = (String) entry.getValue();
-                    String[] modules = val.split(", *");
-                    if (Arrays.asList(modules).contains(path)) {
-                        String key = entry.getKey();
-                        clusterDir = (String) properties.get(key + ".dir");
-                        if (clusterDir != null) {
-                            faketask.setName("cluster.dir");
-                            faketask.setValue(clusterDir);
-                            faketask.execute();
-                            break;
-                        }
-                    }
+            String[] clusterDir = { (String) properties.get(path + ".dir") };
+            if (clusterDir[0] != null) {
+                final String subStr = clusterDir[0].substring(clusterDir[0].lastIndexOf('/') + 1);
+                if (path.startsWith(subStr + "/")) {
+                    id = path.substring(subStr.length() + 1);
                 }
-                if (clusterDir == null)
-                    clusterDir = "extra";   // fallback
+                clusterDir[0] = subStr;
+            } else {
+                id = SetCluster.findClusterAndId("cluster.dir", clusterDir, properties, path, faketask, "extra");
             }
             faketask.setName("cluster.dir");
-            faketask.setValue(clusterDir);
+            faketask.setValue(clusterDir[0]);
             faketask.execute();
             faketask.setName("netbeans.dest.dir");
             faketask.setValue(properties.get("netbeans.dest.dir"));
@@ -408,7 +410,7 @@ final class ModuleListParser {
             assert false : moduleType;
         }
         File jar = fakeproj.resolveFile(fakeproj.replaceProperties("${cluster}/${module.jar}"));
-        List<File> exts = new ArrayList<File>();
+        List<File> exts = new ArrayList<>();
         for (Element ext : XMLUtil.findSubElements(dataEl)) {
             if (!ext.getLocalName().equals("class-path-extension")) {
                 continue;
@@ -450,22 +452,22 @@ final class ModuleListParser {
                 exts.add(resultBin);
             }
         }
-        List<String> prereqs = new ArrayList<String>();
-        List<String> rundeps = new ArrayList<String>();
+        List<String> prereqs = new ArrayList<>();
+        List<String> rundeps = new ArrayList<>();
         Element depsEl = ParseProjectXml.findNBMElement(dataEl, "module-dependencies");
         if (depsEl == null) {
             throw new IOException("Malformed project file " + projectxml);
         }
         Element testDepsEl = ParseProjectXml.findNBMElement(dataEl,"test-dependencies");
          //compileDeps = Collections.emptyList();
-        Map<String,String[]> compileTestDeps = new HashMap<String,String[]>();
+        Map<String,String[]> compileTestDeps = new HashMap<>();
         if (testDepsEl != null) {
             for (Element depssEl : XMLUtil.findSubElements(testDepsEl)) {
                 String testtype = ParseProjectXml.findTextOrNull(depssEl,"name") ;
                 if (testtype == null) {
                     throw new IOException("Must declare <name>unit</name> (e.g.) in <test-type> in " + projectxml);
                 }
-                List<String> compileDepsList = new ArrayList<String>();
+                List<String> compileDepsList = new ArrayList<>();
                 for (Element dep : XMLUtil.findSubElements(depssEl)) {
                     if (dep.getTagName().equals("test-dependency")) {
                         if (ParseProjectXml.findNBMElement(dep,"test") != null)  {
@@ -489,7 +491,7 @@ final class ModuleListParser {
             prereqs.add(cnb2);
         }
         String cluster = fakeproj.getProperty("cluster.dir"); // may be null
-        Entry entry = new Entry(cnb, jar, exts.toArray(new File[exts.size()]), dir, path,
+        Entry entry = new Entry(cnb, jar, exts.toArray(new File[exts.size()]), dir, path, id == null ? path : id,
                 prereqs.toArray(new String[prereqs.size()]), 
                 cluster, 
                 rundeps.toArray(new String[rundeps.size()]),
@@ -537,7 +539,7 @@ final class ModuleListParser {
      * Find all modules in a binary build, possibly from cache.
      */
     private static Map<String,Entry> scanBinaries(Project project, File[] clusters) throws IOException {
-        Map<String,Entry> allEntries = new HashMap<String,Entry>();
+        Map<String,Entry> allEntries = new HashMap<>();
 
         for (File cluster : clusters) {
             Map<String, Entry> entries = BINARY_SCAN_CACHE.get(cluster);
@@ -545,7 +547,7 @@ final class ModuleListParser {
                 if (project != null) {
                     project.log("Scanning for modules in " + cluster);
                 }
-                entries = new HashMap<String, Entry>();
+                entries = new HashMap<>();
                 doScanBinaries(cluster, entries);
                 if (project != null) {
                     project.log("Found modules: " + entries.keySet(), Project.MSG_VERBOSE);
@@ -646,7 +648,7 @@ final class ModuleListParser {
             if (project != null) {
                 project.log("Scanning for modules in suite " + suite);
             }
-            entries = new HashMap<String,Entry>();
+            entries = new HashMap<>();
             doScanSuite(entries, suite, properties, project);
             if (project != null) {
                 project.log("Found modules: " + entries.keySet(), Project.MSG_VERBOSE);
@@ -686,7 +688,7 @@ final class ModuleListParser {
         File basedir = new File((String) properties.get("project"));
         Entry entry = STANDALONE_SCAN_CACHE.get(basedir);
         if (entry == null) {
-            Map<String,Entry> entries = new HashMap<String,Entry>();
+            Map<String,Entry> entries = new HashMap<>();
             if (!scanPossibleProject(basedir, entries, properties, null, ModuleType.STANDALONE, project, null)) {
                 throw new IOException("No valid module found in " + basedir);
             }
@@ -807,7 +809,7 @@ final class ModuleListParser {
      * @return a set of all known entries
      */
     public Set<Entry> findAll() {
-        return new HashSet<Entry>(entries.values());
+        return new HashSet<>(entries.values());
     }
     
     /**
@@ -827,7 +829,7 @@ final class ModuleListParser {
         if (moduleDependencies == null) {
             return new String[0];
         }
-        List<String> cnds = new ArrayList<String>();
+        List<String> cnds = new ArrayList<>();
         StringTokenizer toks = new StringTokenizer(moduleDependencies,",");
         while (toks.hasMoreTokens()) {
             String token = toks.nextToken().trim();
@@ -887,13 +889,14 @@ final class ModuleListParser {
                 String[] pieces = cp.split(" +");
                 exts = new File[pieces.length];
                 for (int l = 0; l < pieces.length; l++) {
-                    exts[l] = fixFxRtJar(new File(dir, pieces[l].replace('/', File.separatorChar)), null);
+                    String append = URLDecoder.decode(pieces[l].replace('/', File.separatorChar), "UTF-8");
+                    exts[l] = fixFxRtJar(new File(dir, append), null);
                 }
             }
             String moduleDependencies = attr.getValue("OpenIDE-Module-Module-Dependencies");
 
 
-            Entry entry = new Entry(codenamebase, m, exts, null, null, null, cluster.getName(),
+            Entry entry = new Entry(codenamebase, m, exts, null, null, null, null, cluster.getName(),
                     parseRuntimeDependencies(moduleDependencies), Collections.<String,String[]>emptyMap(),
                     new File(moduleAutoDepsDir, codenamebase.replace('.', '-') + ".xml"));
             Entry prev = entries.put(codenamebase, entry);
@@ -917,6 +920,7 @@ final class ModuleListParser {
         private final File[] classPathExtensions;
         private final File sourceLocation;
         private final String netbeansOrgPath;
+        private final String netbeansOrgId;
         private final String[] buildPrerequisites;
         private final String clusterName;
         private final String[] runtimeDependencies; 
@@ -924,13 +928,14 @@ final class ModuleListParser {
         private final Map<String,String[]> testDependencies;
         private final File moduleAutoDeps;
         
-        Entry(String cnb, File jar, File[] classPathExtensions, File sourceLocation, String netbeansOrgPath,
+        Entry(String cnb, File jar, File[] classPathExtensions, File sourceLocation, String netbeansOrgPath, String netbeansOrgId,
                 String[] buildPrerequisites, String clusterName,String[] runtimeDependencies, Map<String,String[]> testDependencies, File moduleAutoDeps) {
             this.cnb = cnb;
             this.jar = jar;
             this.classPathExtensions = classPathExtensions;
             this.sourceLocation = sourceLocation;
             this.netbeansOrgPath = netbeansOrgPath;
+            this.netbeansOrgId = netbeansOrgId;
             this.buildPrerequisites = buildPrerequisites;
             this.clusterName = clusterName;
             this.runtimeDependencies = runtimeDependencies;
@@ -1040,6 +1045,9 @@ final class ModuleListParser {
             if ((this.netbeansOrgPath == null) ? (other.netbeansOrgPath != null) : !this.netbeansOrgPath.equals(other.netbeansOrgPath)) {
                 return false;
             }
+            if ((this.netbeansOrgId == null) ? (other.netbeansOrgId != null) : !this.netbeansOrgId.equals(other.netbeansOrgId)) {
+                return false;
+            }
             if (!Arrays.deepEquals(this.buildPrerequisites, other.buildPrerequisites)) {
                 return false;
             }
@@ -1063,11 +1071,16 @@ final class ModuleListParser {
             hash = 83 * hash + Arrays.deepHashCode(this.classPathExtensions);
             hash = 83 * hash + (this.sourceLocation != null ? this.sourceLocation.hashCode() : 0);
             hash = 83 * hash + (this.netbeansOrgPath != null ? this.netbeansOrgPath.hashCode() : 0);
+            hash = 83 * hash + (this.netbeansOrgId != null ? this.netbeansOrgId.hashCode() : 0);
             hash = 83 * hash + Arrays.deepHashCode(this.buildPrerequisites);
             hash = 83 * hash + (this.clusterName != null ? this.clusterName.hashCode() : 0);
             hash = 83 * hash + Arrays.deepHashCode(this.runtimeDependencies);
             hash = 83 * hash + (this.testDependencies != null ? this.testDependencies.hashCode() : 0);
             return hash;
+        }
+
+        String getNetbeansOrgId() {
+            return netbeansOrgId;
         }
 
 

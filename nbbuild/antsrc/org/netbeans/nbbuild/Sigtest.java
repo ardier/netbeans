@@ -49,6 +49,7 @@ public class Sigtest extends Task {
     File report;
     boolean failOnError = true;
     String version;
+    private String release;
     
     public void setFileName(File f) {
         fileName = f;
@@ -64,6 +65,10 @@ public class Sigtest extends Task {
 
     public void setAction(ActionType s) {
         action = s;
+    }
+
+    public void setRelease(String r) {
+        release = r;
     }
 
     public void setClasspath(Path p) {
@@ -195,11 +200,11 @@ public class Sigtest extends Task {
             String email = getProject().getProperty("sigtest.mail");
             if (email != null) {
                 try {
-                    FileWriter w = new FileWriter(outputFile);
-                    w.write("email: ");
-                    w.write(email);
-                    w.write("\n");
-                    w.close();
+                    try (FileWriter w = new FileWriter(outputFile)) {
+                        w.write("email: ");
+                        w.write(email);
+                        w.write("\n");
+                    }
                 } catch (IOException ex) {
                     throw new BuildException(ex);
                 }
@@ -261,7 +266,7 @@ public class Sigtest extends Task {
     private void apitest() throws Exception {
         URLClassLoader url = new URLClassLoader(new URL[] { sigtestJar.toURI().toURL() }, Sigtest.class.getClassLoader());
         Class<?> clazz = url.loadClass("org.netbeans.apitest.Sigtest");
-        Task task = (Task)clazz.newInstance();
+        Task task = (Task) clazz.getConstructor().newInstance();
         
         task.setProject(getProject());
         task.setTaskName(getTaskName());
@@ -270,6 +275,7 @@ public class Sigtest extends Task {
         setM(task, "setReport", File.class, report);
         setM(task, "setPackages", String.class, packages);
         setM(task, "setVersion", String.class, version);
+        setM(task, "setRelease", String.class, release);
         
         Class<? extends EnumeratedAttribute> actionType = url.loadClass("org.netbeans.apitest.Sigtest$ActionType").asSubclass(EnumeratedAttribute.class);
         setM(task, "setAction", EnumeratedAttribute.getInstance(actionType, action.getValue()));
